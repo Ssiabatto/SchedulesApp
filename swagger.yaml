@@ -1,0 +1,705 @@
+openapi: 3.0.3
+info:
+  title: SchedulesApp API
+  description: API para gestión de turnos de vigilantes en edificios
+  version: 1.0.0
+  contact:
+    name: SchedulesApp Team
+    email: support@schedulesapp.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development server
+  - url: https://production-domain.com/api
+    description: Production server
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Verifica el estado del API
+      responses:
+        '200':
+          description: API funcionando correctamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  message:
+                    type: string
+                    example: "API is running"
+
+  /auth/login:
+    post:
+      summary: User login
+      description: Autenticar usuario y obtener token JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: "admin"
+                password:
+                  type: string
+                  example: "admin123"
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  access_token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/register:
+    post:
+      summary: User registration
+      description: Registrar nuevo usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+                - full_name
+              properties:
+                username:
+                  type: string
+                  example: "newuser"
+                email:
+                  type: string
+                  format: email
+                  example: "user@example.com"
+                password:
+                  type: string
+                  minLength: 6
+                  example: "password123"
+                full_name:
+                  type: string
+                  example: "Juan Pérez"
+                role:
+                  type: string
+                  enum: [operador_supervisor, auxiliar_administrativo]
+                  example: "auxiliar_administrativo"
+      responses:
+        '201':
+          description: Usuario creado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  user_id:
+                    type: integer
+        '400':
+          description: Error en datos de entrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/protected:
+    get:
+      summary: Protected endpoint test
+      description: Endpoint protegido para verificar autenticación
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Acceso autorizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Token inválido o expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /vigilantes:
+    get:
+      summary: List vigilantes
+      description: Obtener lista de vigilantes con filtros opcionales
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filtrar por estado
+          schema:
+            type: string
+            enum: [ACTIVE, INACTIVE]
+        - name: name
+          in: query
+          description: Filtrar por nombre (búsqueda parcial)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista de vigilantes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Vigilante'
+        '401':
+          description: No autorizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      summary: Create vigilante
+      description: Crear nuevo vigilante
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VigilanteCreate'
+      responses:
+        '201':
+          description: Vigilante creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vigilante'
+        '400':
+          description: Error en datos de entrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /vigilantes/{id}:
+    get:
+      summary: Get vigilante by ID
+      description: Obtener vigilante específico por ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID del vigilante
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Datos del vigilante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vigilante'
+        '404':
+          description: Vigilante no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update vigilante
+      description: Actualizar datos del vigilante
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID del vigilante
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VigilanteUpdate'
+      responses:
+        '200':
+          description: Vigilante actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vigilante'
+        '404':
+          description: Vigilante no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete vigilante
+      description: Eliminar vigilante
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID del vigilante
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Vigilante eliminado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '404':
+          description: Vigilante no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /buildings:
+    get:
+      summary: List buildings
+      description: Obtener lista de edificios
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de edificios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Building'
+
+    post:
+      summary: Create building
+      description: Crear nuevo edificio
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BuildingCreate'
+      responses:
+        '201':
+          description: Edificio creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Building'
+
+  /shifts:
+    get:
+      summary: List shifts
+      description: Obtener lista de turnos
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: vigilante_id
+          in: query
+          description: Filtrar por vigilante
+          schema:
+            type: integer
+        - name: building_id
+          in: query
+          description: Filtrar por edificio
+          schema:
+            type: integer
+        - name: date
+          in: query
+          description: Filtrar por fecha (YYYY-MM-DD)
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Lista de turnos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Shift'
+
+    post:
+      summary: Create shift
+      description: Crear nuevo turno
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftCreate'
+      responses:
+        '201':
+          description: Turno creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: "admin"
+        email:
+          type: string
+          format: email
+          example: "admin@example.com"
+        role:
+          type: string
+          enum: [operador_supervisor, auxiliar_administrativo]
+          example: "operador_supervisor"
+        full_name:
+          type: string
+          example: "Administrador Sistema"
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+
+    Vigilante:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Juan Pérez García"
+        email:
+          type: string
+          format: email
+          example: "juan.perez@example.com"
+        phone:
+          type: string
+          example: "+57 3001234567"
+        document_id:
+          type: string
+          example: "12345678"
+        skills:
+          type: array
+          items:
+            type: string
+          example: ["Vigilancia", "Primeros Auxilios"]
+        certifications:
+          type: array
+          items:
+            type: string
+          example: ["Curso Vigilancia", "Manejo Armas"]
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+          example: "ACTIVE"
+        hire_date:
+          type: string
+          format: date-time
+        contract_start:
+          type: string
+          format: date-time
+        contract_end:
+          type: string
+          format: date-time
+        address:
+          type: string
+          example: "Calle 10 # 15-20, Bogotá"
+        emergency_contact:
+          type: string
+          example: "María García - +57 3009876543"
+
+    VigilanteCreate:
+      type: object
+      required:
+        - name
+        - email
+        - phone
+        - document_id
+        - hire_date
+        - contract_start
+      properties:
+        name:
+          type: string
+          example: "Juan Pérez García"
+        email:
+          type: string
+          format: email
+          example: "juan.perez@example.com"
+        phone:
+          type: string
+          example: "+57 3001234567"
+        document_id:
+          type: string
+          example: "12345678"
+        skills:
+          type: array
+          items:
+            type: string
+          example: ["Vigilancia", "Primeros Auxilios"]
+        certifications:
+          type: array
+          items:
+            type: string
+          example: ["Curso Vigilancia"]
+        hire_date:
+          type: string
+          format: date-time
+        contract_start:
+          type: string
+          format: date-time
+        contract_end:
+          type: string
+          format: date-time
+        address:
+          type: string
+          example: "Calle 10 # 15-20, Bogotá"
+        emergency_contact:
+          type: string
+          example: "María García - +57 3009876543"
+
+    VigilanteUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        address:
+          type: string
+        emergency_contact:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+
+    Building:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Torre Empresarial ABC"
+        address:
+          type: string
+          example: "Carrera 7 # 50-20, Bogotá"
+        description:
+          type: string
+          example: "Edificio corporativo de 20 pisos"
+        security_requirements:
+          type: array
+          items:
+            type: string
+          example: ["Vigilancia 24h", "Control acceso"]
+        hourly_rate:
+          type: number
+          format: float
+          example: 15000.0
+        overtime_rate:
+          type: number
+          format: float
+          example: 22500.0
+        holiday_rate:
+          type: number
+          format: float
+          example: 30000.0
+        contact_person:
+          type: string
+          example: "Ana López"
+        contact_phone:
+          type: string
+          example: "+57 3101234567"
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+          example: "ACTIVE"
+
+    BuildingCreate:
+      type: object
+      required:
+        - name
+        - address
+        - hourly_rate
+        - contact_person
+        - contact_phone
+      properties:
+        name:
+          type: string
+          example: "Torre Empresarial ABC"
+        address:
+          type: string
+          example: "Carrera 7 # 50-20, Bogotá"
+        description:
+          type: string
+          example: "Edificio corporativo de 20 pisos"
+        security_requirements:
+          type: array
+          items:
+            type: string
+          example: ["Vigilancia 24h", "Control acceso"]
+        hourly_rate:
+          type: number
+          format: float
+          example: 15000.0
+        overtime_rate:
+          type: number
+          format: float
+          example: 22500.0
+        holiday_rate:
+          type: number
+          format: float
+          example: 30000.0
+        contact_person:
+          type: string
+          example: "Ana López"
+        contact_phone:
+          type: string
+          example: "+57 3101234567"
+
+    Shift:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        vigilante_id:
+          type: integer
+          example: 1
+        building_id:
+          type: integer
+          example: 1
+        start_datetime:
+          type: string
+          format: date-time
+        end_datetime:
+          type: string
+          format: date-time
+        shift_type:
+          type: string
+          enum: [NORMAL, OVERTIME, HOLIDAY]
+          example: "NORMAL"
+        notes:
+          type: string
+          example: "Turno nocturno regular"
+        is_confirmed:
+          type: boolean
+          example: true
+
+    ShiftCreate:
+      type: object
+      required:
+        - vigilante_id
+        - building_id
+        - start_datetime
+        - end_datetime
+      properties:
+        vigilante_id:
+          type: integer
+          example: 1
+        building_id:
+          type: integer
+          example: 1
+        start_datetime:
+          type: string
+          format: date-time
+        end_datetime:
+          type: string
+          format: date-time
+        shift_type:
+          type: string
+          enum: [NORMAL, OVERTIME, HOLIDAY]
+          example: "NORMAL"
+        notes:
+          type: string
+          example: "Turno nocturno regular"
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Error message"
+        code:
+          type: string
+          example: "ERROR_CODE"

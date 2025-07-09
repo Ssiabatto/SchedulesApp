@@ -1,3 +1,4 @@
+import os
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -7,7 +8,7 @@ from app.infrastructure.database import DatabaseSession, SQLUserRepository
 auth_bp = Blueprint('auth', __name__)
 
 # Initialize database and repositories
-db_session = DatabaseSession("postgresql://user:password@localhost/dbname")  # This should come from config
+db_session = DatabaseSession(os.environ.get('DATABASE_URL', 'postgresql://user:password@localhost:5432/gestion_turnos_vigilantes'))
 user_repository = SQLUserRepository(db_session)
 user_service = UserService(user_repository)
 
@@ -22,7 +23,6 @@ def login():
 
     user = user_service.get_user_by_username(username)
     if user and check_password_hash(user.password_hash, password):
-        # Update last login
         user_service.update_last_login(user.id)
         
         access_token = create_access_token(identity={
@@ -47,13 +47,11 @@ def login():
 def register():
     data = request.get_json()
     
-    # Validate required fields
     required_fields = ['username', 'email', 'password', 'full_name']
     for field in required_fields:
         if field not in data:
             return jsonify({"success": False, "message": f"Missing required field: {field}"}), 400
     
-    # Hash the password
     password_hash = generate_password_hash(data['password'])
     data['password'] = password_hash
     

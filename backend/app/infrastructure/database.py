@@ -1,415 +1,533 @@
 """
-Infrastructure layer - Database implementations
-This layer implements the repository interfaces defined in the domain layer
+Database models and configuration for SchedulesApp
+Implements SQLAlchemy models that map to PostgreDB.sql schema
 """
-from typing import List, Optional, Dict, Any
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, JSON, Enum as SQLEnum
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from datetime import datetime
-import enum
 
-from ..domain.models import Vigilante, Building, Shift, User, Report, StatusEnum, ShiftTypeEnum
-from ..domain.repositories import (
-    VigilanteRepository, 
-    BuildingRepository, 
-    ShiftRepository, 
-    UserRepository, 
-    ReportRepository
-)
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, Date, DateTime, Time, Text, DECIMAL, ForeignKey, CheckConstraint
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.sql import func
+from datetime import datetime, date
+import os
 
 Base = declarative_base()
 
-# SQLAlchemy models (Infrastructure models that map to database)
+# Database Configuration
+def get_database_url():
+    """Get database URL from environment variables"""
+    return os.getenv('DATABASE_URL', 'postgresql://user:password@localhost:5432/gestion_turnos_vigilantes')
+
+def create_engine_instance():
+    """Create and return SQLAlchemy engine"""
+    database_url = get_database_url()
+    return create_engine(database_url, echo=False)
+
+def get_session():
+    """Create and return database session"""
+    engine = create_engine_instance()
+    Session = sessionmaker(bind=engine)
+    return Session()
+
+def create_tables():
+    """Create all tables in the database"""
+    engine = create_engine_instance()
+    Base.metadata.create_all(engine)
+
+# User Management Models
+class UserModel(Base):
+    """Users table - usuarios"""
+    __tablename__ = 'usuarios'
+    
+    id_usuario = Column(Integer, primary_key=True, autoincrement=True)
+    nombre_usuario = Column(String(50), nullable=False, unique=True)
+    password = Column(Text, nullable=False)
+    rol = Column(String(50), nullable=False)
+    nombre_completo = Column(String(100), nullable=False)
+    email = Column(String(100), nullable=False)
+    activo = Column(Boolean, default=True)
+    fecha_creacion = Column(DateTime, default=func.now())
+    ultima_sesion = Column(DateTime)
+    
+    __table_args__ = (
+        CheckConstraint("rol IN ('operador_supervisor', 'auxiliar_administrativo')"),
+    )
+
+# Vigilantes Management Models
 class VigilanteModel(Base):
-    __tablename__ = "vigilantes"
+    """Vigilantes table - vigilantes"""
+    __tablename__ = 'vigilantes'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    phone = Column(String(50), nullable=False)
-    document_id = Column(String(50), unique=True, nullable=False)
-    skills = Column(JSON, default=list)
-    certifications = Column(JSON, default=list)
-    status = Column(SQLEnum(StatusEnum), default=StatusEnum.ACTIVE)
-    hire_date = Column(DateTime, nullable=False)
-    contract_start = Column(DateTime, nullable=False)
-    contract_end = Column(DateTime, nullable=False)
-    address = Column(Text, nullable=True)
-    emergency_contact = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id_vigilante = Column(Integer, primary_key=True, autoincrement=True)
+    nombre_completo = Column(String(100), nullable=False)
+    numero_identificacion = Column(String(20), nullable=False, unique=True)
+    fecha_nacimiento = Column(Date, nullable=False)
+    telefono_celular = Column(String(20), nullable=False)
+    correo_electronico = Column(String(100))
+    direccion_calle = Column(Integer, nullable=False)
+    direccion_carrera = Column(Integer, nullable=False)
+    direccion_completa = Column(String(255), nullable=False)
+    contacto_emergencia_nombre = Column(String(100), nullable=False)
+    contacto_emergencia_telefono = Column(String(20), nullable=False)
+    tipo_contrato = Column(String(50), nullable=False)
+    edificios = Column(String(50), nullable=False)
+    salario = Column(DECIMAL(10, 2), nullable=False)
+    fecha_contratacion = Column(Date, nullable=False)
+    foto = Column(Text)  # BYTEA equivalent for photos
+    activo = Column(Boolean, default=True)
+    
+    __table_args__ = (
+        CheckConstraint("tipo_contrato IN ('fijo_full_time', 'relevo_part_time')"),
+    )
 
+class CertificacionVigilanteModel(Base):
+    """Vigilante certifications table - certificaciones_vigilantes"""
+    __tablename__ = 'certificaciones_vigilantes'
+    
+    id_certificacion = Column(Integer, primary_key=True, autoincrement=True)
+    id_vigilante = Column(Integer, ForeignKey('vigilantes.id_vigilante', ondelete='CASCADE'), nullable=False)
+    curso_vigilancia = Column(Boolean, default=False)
+    manejo_armas = Column(Boolean, default=False)
+    medios_electronicos = Column(Boolean, default=False)
+    primeros_auxilios = Column(Boolean, default=False)
+    fecha_actualizacion = Column(DateTime, default=func.now())
+    
+    # Relationship
+    vigilante = relationship("VigilanteModel", backref="certificaciones")
 
+# Buildings Management Models
 class BuildingModel(Base):
-    __tablename__ = "buildings"
+    """Buildings table - edificios"""
+    __tablename__ = 'edificios'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
-    address = Column(Text, nullable=False)
-    description = Column(Text, nullable=True)
-    security_requirements = Column(JSON, default=list)
-    hourly_rate = Column(Float, nullable=False)
-    overtime_rate = Column(Float, nullable=False)
-    holiday_rate = Column(Float, nullable=False)
-    contact_person = Column(String(255), nullable=False)
-    contact_phone = Column(String(50), nullable=False)
-    status = Column(SQLEnum(StatusEnum), default=StatusEnum.ACTIVE)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id_edificio = Column(Integer, primary_key=True, autoincrement=True)
+    nombre = Column(String(100), nullable=False)
+    direccion_calle = Column(Integer, nullable=False)
+    direccion_carrera = Column(Integer, nullable=False)
+    direccion_completa = Column(String(255), nullable=False)
+    telefono = Column(String(20))
+    administrador = Column(String(100))
+    telefono_administrador = Column(String(20))
+    tipo_turno = Column(String(20), nullable=False)
+    horas_semanales = Column(Integer, nullable=False)
+    activo = Column(Boolean, default=True)
+    
+    __table_args__ = (
+        CheckConstraint("tipo_turno IN ('8_horas', '12_horas', '24_horas')"),
+        CheckConstraint("horas_semanales >= 40 AND horas_semanales <= 48"),
+    )
 
+# Shift Types and Planning Models
+class TipoTurnoModel(Base):
+    """Shift types table - tipos_turnos"""
+    __tablename__ = 'tipos_turnos'
+    
+    id_tipo_turno = Column(Integer, primary_key=True, autoincrement=True)
+    nombre = Column(String(50), nullable=False)
+    hora_inicio = Column(Time, nullable=False)
+    hora_fin = Column(Time, nullable=False)
+    duracion = Column(Integer, nullable=False)
+    descripcion = Column(String(255))
+
+class PlanillaTurnoModel(Base):
+    """Monthly shift planning table - planilla_turnos"""
+    __tablename__ = 'planilla_turnos'
+    
+    id_planilla = Column(Integer, primary_key=True, autoincrement=True)
+    mes = Column(Integer, nullable=False)
+    anio = Column(Integer, nullable=False)
+    fecha_generacion = Column(DateTime, default=func.now())
+    generado_por = Column(Integer, ForeignKey('usuarios.id_usuario'))
+    estado = Column(String(20), default='borrador')
+    
+    __table_args__ = (
+        CheckConstraint("mes >= 1 AND mes <= 12"),
+        CheckConstraint("estado IN ('borrador', 'publicado', 'archivado')"),
+    )
 
 class ShiftModel(Base):
-    __tablename__ = "shifts"
+    """Shift assignments table - asignaciones_turnos"""
+    __tablename__ = 'asignaciones_turnos'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    vigilante_id = Column(Integer, nullable=False)  # Foreign key
-    building_id = Column(Integer, nullable=False)   # Foreign key
-    start_datetime = Column(DateTime, nullable=False)
-    end_datetime = Column(DateTime, nullable=False)
-    shift_type = Column(SQLEnum(ShiftTypeEnum), default=ShiftTypeEnum.NORMAL)
-    notes = Column(Text, nullable=True)
-    is_confirmed = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id_asignacion = Column(Integer, primary_key=True, autoincrement=True)
+    id_planilla = Column(Integer, ForeignKey('planilla_turnos.id_planilla'), nullable=False)
+    id_vigilante = Column(Integer, ForeignKey('vigilantes.id_vigilante'), nullable=False)
+    id_edificio = Column(Integer, ForeignKey('edificios.id_edificio'), nullable=False)
+    id_tipo_turno = Column(Integer, ForeignKey('tipos_turnos.id_tipo_turno'), nullable=False)
+    fecha = Column(Date, nullable=False)
+    hora_inicio = Column(DateTime, nullable=False)
+    hora_fin = Column(DateTime, nullable=False)
+    es_turno_habitual = Column(Boolean, default=True)
+    estado = Column(String(20), default='programado')
+    creado_por = Column(Integer, ForeignKey('usuarios.id_usuario'))
+    fecha_creacion = Column(DateTime, default=func.now())
+    
+    # Relationships
+    planilla = relationship("PlanillaTurnoModel")
+    vigilante = relationship("VigilanteModel")
+    edificio = relationship("BuildingModel")
+    tipo_turno = relationship("TipoTurnoModel")
+    
+    __table_args__ = (
+        CheckConstraint("estado IN ('programado', 'confirmado', 'completado', 'ausente')"),
+    )
 
+# Contingencies and Incidents Models
+class NovedadModel(Base):
+    """Incidents and contingencies table - novedades"""
+    __tablename__ = 'novedades'
+    
+    id_novedad = Column(Integer, primary_key=True, autoincrement=True)
+    id_asignacion_original = Column(Integer, ForeignKey('asignaciones_turnos.id_asignacion'))
+    id_vigilante_original = Column(Integer, ForeignKey('vigilantes.id_vigilante'), nullable=False)
+    id_vigilante_reemplazo = Column(Integer, ForeignKey('vigilantes.id_vigilante'))
+    id_edificio = Column(Integer, ForeignKey('edificios.id_edificio'), nullable=False)
+    fecha_novedad = Column(Date, nullable=False)
+    hora_inicio = Column(DateTime, nullable=False)
+    hora_fin = Column(DateTime, nullable=False)
+    tipo_novedad = Column(String(50), nullable=False)
+    descripcion = Column(Text)
+    estado = Column(String(20), default='pendiente')
+    registrado_por = Column(Integer, ForeignKey('usuarios.id_usuario'))
+    fecha_registro = Column(DateTime, default=func.now())
+    
+    # Relationships
+    asignacion_original = relationship("ShiftModel")
+    vigilante_original = relationship("VigilanteModel", foreign_keys=[id_vigilante_original])
+    vigilante_reemplazo = relationship("VigilanteModel", foreign_keys=[id_vigilante_reemplazo])
+    edificio = relationship("BuildingModel")
+    
+    __table_args__ = (
+        CheckConstraint("tipo_novedad IN ('incapacidad', 'ausencia', 'contingencia', 'despido', 'calamidad', 'permiso', 'vacaciones', 'solicitud_vigilante')"),
+        CheckConstraint("estado IN ('pendiente', 'resuelta', 'cancelada')"),
+    )
 
-class UserModel(Base):
-    __tablename__ = "users"
+# Hours Registration and Payroll Models
+class RegistroHorasModel(Base):
+    """Hours registration table - registro_horas"""
+    __tablename__ = 'registro_horas'
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(100), unique=True, nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(String(50), nullable=False)  # "operator" or "auxiliary"
-    full_name = Column(String(255), nullable=False)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_login = Column(DateTime, nullable=True)
+    id_registro = Column(Integer, primary_key=True, autoincrement=True)
+    id_asignacion = Column(Integer, ForeignKey('asignaciones_turnos.id_asignacion'), nullable=False)
+    id_vigilante = Column(Integer, ForeignKey('vigilantes.id_vigilante'), nullable=False)
+    id_edificio = Column(Integer, ForeignKey('edificios.id_edificio'), nullable=False)
+    fecha = Column(Date, nullable=False)
+    hora_inicio = Column(DateTime, nullable=False)
+    hora_fin = Column(DateTime, nullable=False)
+    horas_normales = Column(DECIMAL(5, 2), default=0)
+    horas_extras = Column(DECIMAL(5, 2), default=0)
+    horas_festivas = Column(DECIMAL(5, 2), default=0)
+    observaciones = Column(Text)
+    registrado_por = Column(Integer, ForeignKey('usuarios.id_usuario'))
+    fecha_registro = Column(DateTime, default=func.now())
+    
+    # Relationships
+    asignacion = relationship("ShiftModel")
+    vigilante = relationship("VigilanteModel")
+    edificio = relationship("BuildingModel")
 
+# System Configuration Model
+class ConfiguracionSistemaModel(Base):
+    """System configuration table - configuracion_sistema"""
+    __tablename__ = 'configuracion_sistema'
+    
+    id_configuracion = Column(Integer, primary_key=True, autoincrement=True)
+    minimo_horas_descanso = Column(Integer, nullable=False, default=8)
+    ultimo_backup = Column(Date)
+    ultima_limpieza_trimestral = Column(Date)
+    actualizado_por = Column(Integer, ForeignKey('usuarios.id_usuario'))
+    fecha_actualizacion = Column(DateTime, default=func.now())
+    
+    __table_args__ = (
+        CheckConstraint("minimo_horas_descanso >= 1 AND minimo_horas_descanso <= 12"),
+    )
 
-class ReportModel(Base):
-    __tablename__ = "reports"
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title = Column(String(255), nullable=False)
-    report_type = Column(String(100), nullable=False)
-    criteria = Column(JSON, nullable=False)
-    generated_by = Column(Integer, nullable=False)  # Foreign key to users
-    generated_at = Column(DateTime, nullable=False)
-    file_path = Column(String(500), nullable=True)
-    status = Column(String(50), default="pending")
+# Repository Base Classes for Clean Architecture
+from abc import ABC, abstractmethod
+from typing import List, Optional
 
+class UserRepository(ABC):
+    """Abstract repository for User operations"""
+    
+    @abstractmethod
+    def create(self, user_data: dict) -> dict:
+        pass
+    
+    @abstractmethod
+    def get_by_id(self, user_id: int) -> Optional[dict]:
+        pass
+    
+    @abstractmethod
+    def get_by_username(self, username: str) -> Optional[dict]:
+        pass
+    
+    @abstractmethod
+    def update(self, user_id: int, user_data: dict) -> dict:
+        pass
+    
+    @abstractmethod
+    def delete(self, user_id: int) -> bool:
+        pass
 
-# Database session management
-class DatabaseSession:
-    def __init__(self, database_url: str):
-        self.engine = create_engine(database_url)
-        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        Base.metadata.create_all(bind=self.engine)
+class VigilanteRepository(ABC):
+    """Abstract repository for Vigilante operations"""
     
-    def get_session(self) -> Session:
-        return self.SessionLocal()
-
-
-# Repository implementations
-class SQLVigilanteRepository(VigilanteRepository):
-    def __init__(self, db_session: DatabaseSession):
-        self.db_session = db_session
+    @abstractmethod
+    def create(self, vigilante_data: dict) -> dict:
+        pass
     
-    def _model_to_entity(self, model: VigilanteModel) -> Vigilante:
-        """Convert SQLAlchemy model to domain entity"""
-        return Vigilante(
-            id=model.id,
-            name=model.name,
-            email=model.email,
-            phone=model.phone,
-            document_id=model.document_id,
-            skills=model.skills or [],
-            certifications=model.certifications or [],
-            status=model.status,
-            hire_date=model.hire_date,
-            contract_start=model.contract_start,
-            contract_end=model.contract_end,
-            address=model.address,
-            emergency_contact=model.emergency_contact
-        )
+    @abstractmethod
+    def get_all(self) -> List[dict]:
+        pass
     
-    def _entity_to_model(self, entity: Vigilante) -> VigilanteModel:
-        """Convert domain entity to SQLAlchemy model"""
-        return VigilanteModel(
-            id=entity.id,
-            name=entity.name,
-            email=entity.email,
-            phone=entity.phone,
-            document_id=entity.document_id,
-            skills=entity.skills,
-            certifications=entity.certifications,
-            status=entity.status,
-            hire_date=entity.hire_date,
-            contract_start=entity.contract_start,
-            contract_end=entity.contract_end,
-            address=entity.address,
-            emergency_contact=entity.emergency_contact
-        )
+    @abstractmethod
+    def get_by_id(self, vigilante_id: int) -> Optional[dict]:
+        pass
     
-    def create(self, vigilante: Vigilante) -> Vigilante:
-        with self.db_session.get_session() as session:
-            model = self._entity_to_model(vigilante)
-            session.add(model)
-            session.commit()
-            session.refresh(model)
-            return self._model_to_entity(model)
+    @abstractmethod
+    def update(self, vigilante_id: int, vigilante_data: dict) -> dict:
+        pass
     
-    def get_by_id(self, vigilante_id: int) -> Optional[Vigilante]:
-        with self.db_session.get_session() as session:
-            model = session.query(VigilanteModel).filter(VigilanteModel.id == vigilante_id).first()
-            return self._model_to_entity(model) if model else None
-    
-    def get_all(self, filters: Optional[Dict[str, Any]] = None) -> List[Vigilante]:
-        with self.db_session.get_session() as session:
-            query = session.query(VigilanteModel)
-            
-            if filters:
-                if 'status' in filters:
-                    query = query.filter(VigilanteModel.status == filters['status'])
-                if 'name' in filters:
-                    query = query.filter(VigilanteModel.name.ilike(f"%{filters['name']}%"))
-            
-            models = query.all()
-            return [self._model_to_entity(model) for model in models]
-    
-    def update(self, vigilante: Vigilante) -> Vigilante:
-        with self.db_session.get_session() as session:
-            model = session.query(VigilanteModel).filter(VigilanteModel.id == vigilante.id).first()
-            if model:
-                model.name = vigilante.name
-                model.email = vigilante.email
-                model.phone = vigilante.phone
-                model.document_id = vigilante.document_id
-                model.skills = vigilante.skills
-                model.certifications = vigilante.certifications
-                model.status = vigilante.status
-                model.hire_date = vigilante.hire_date
-                model.contract_start = vigilante.contract_start
-                model.contract_end = vigilante.contract_end
-                model.address = vigilante.address
-                model.emergency_contact = vigilante.emergency_contact
-                model.updated_at = datetime.utcnow()
-                
-                session.commit()
-                session.refresh(model)
-                return self._model_to_entity(model)
-    
+    @abstractmethod
     def delete(self, vigilante_id: int) -> bool:
-        with self.db_session.get_session() as session:
-            model = session.query(VigilanteModel).filter(VigilanteModel.id == vigilante_id).first()
-            if model:
-                session.delete(model)
-                session.commit()
-                return True
-            return False
-    
-    def get_by_email(self, email: str) -> Optional[Vigilante]:
-        with self.db_session.get_session() as session:
-            model = session.query(VigilanteModel).filter(VigilanteModel.email == email).first()
-            return self._model_to_entity(model) if model else None
-    
-    def get_active_vigilantes(self) -> List[Vigilante]:
-        return self.get_all({'status': StatusEnum.ACTIVE})
+        pass
 
-
-class SQLBuildingRepository(BuildingRepository):
-    def __init__(self, db_session: DatabaseSession):
-        self.db_session = db_session
+class BuildingRepository(ABC):
+    """Abstract repository for Building operations"""
     
-    def _model_to_entity(self, model: BuildingModel) -> Building:
-        return Building(
-            id=model.id,
-            name=model.name,
-            address=model.address,
-            description=model.description,
-            security_requirements=model.security_requirements or [],
-            hourly_rate=model.hourly_rate,
-            overtime_rate=model.overtime_rate,
-            holiday_rate=model.holiday_rate,
-            contact_person=model.contact_person,
-            contact_phone=model.contact_phone,
-            status=model.status
-        )
+    @abstractmethod
+    def create(self, building_data: dict) -> dict:
+        pass
     
-    def _entity_to_model(self, entity: Building) -> BuildingModel:
-        return BuildingModel(
-            id=entity.id,
-            name=entity.name,
-            address=entity.address,
-            description=entity.description,
-            security_requirements=entity.security_requirements,
-            hourly_rate=entity.hourly_rate,
-            overtime_rate=entity.overtime_rate,
-            holiday_rate=entity.holiday_rate,
-            contact_person=entity.contact_person,
-            contact_phone=entity.contact_phone,
-            status=entity.status
-        )
+    @abstractmethod
+    def get_all(self) -> List[dict]:
+        pass
     
-    def create(self, building: Building) -> Building:
-        with self.db_session.get_session() as session:
-            model = self._entity_to_model(building)
-            session.add(model)
-            session.commit()
-            session.refresh(model)
-            return self._model_to_entity(model)
+    @abstractmethod
+    def get_by_id(self, building_id: int) -> Optional[dict]:
+        pass
     
-    def get_by_id(self, building_id: int) -> Optional[Building]:
-        with self.db_session.get_session() as session:
-            model = session.query(BuildingModel).filter(BuildingModel.id == building_id).first()
-            return self._model_to_entity(model) if model else None
+    @abstractmethod
+    def update(self, building_id: int, building_data: dict) -> dict:
+        pass
     
-    def get_all(self, filters: Optional[Dict[str, Any]] = None) -> List[Building]:
-        with self.db_session.get_session() as session:
-            query = session.query(BuildingModel)
-            
-            if filters:
-                if 'status' in filters:
-                    query = query.filter(BuildingModel.status == filters['status'])
-                if 'name' in filters:
-                    query = query.filter(BuildingModel.name.ilike(f"%{filters['name']}%"))
-            
-            models = query.all()
-            return [self._model_to_entity(model) for model in models]
-    
-    def update(self, building: Building) -> Building:
-        with self.db_session.get_session() as session:
-            model = session.query(BuildingModel).filter(BuildingModel.id == building.id).first()
-            if model:
-                model.name = building.name
-                model.address = building.address
-                model.description = building.description
-                model.security_requirements = building.security_requirements
-                model.hourly_rate = building.hourly_rate
-                model.overtime_rate = building.overtime_rate
-                model.holiday_rate = building.holiday_rate
-                model.contact_person = building.contact_person
-                model.contact_phone = building.contact_phone
-                model.status = building.status
-                model.updated_at = datetime.utcnow()
-                
-                session.commit()
-                session.refresh(model)
-                return self._model_to_entity(model)
-    
+    @abstractmethod
     def delete(self, building_id: int) -> bool:
-        with self.db_session.get_session() as session:
-            model = session.query(BuildingModel).filter(BuildingModel.id == building_id).first()
-            if model:
-                session.delete(model)
-                session.commit()
-                return True
-            return False
-    
-    def get_active_buildings(self) -> List[Building]:
-        return self.get_all({'status': StatusEnum.ACTIVE})
+        pass
 
-
+# SQLAlchemy Repository Implementations
 class SQLUserRepository(UserRepository):
     """SQLAlchemy implementation of UserRepository"""
     
-    def __init__(self, db_session: DatabaseSession):
-        self.db_session = db_session
+    def __init__(self):
+        self.session = get_session()
     
-    def _model_to_entity(self, model: UserModel) -> User:
-        """Convert SQLAlchemy model to domain entity"""
-        return User(
-            id=model.id,
-            username=model.username,
-            email=model.email,
-            password_hash=model.password_hash,
-            role=model.role,
-            full_name=model.full_name,
-            is_active=model.is_active,
-            created_at=model.created_at,
-            last_login=model.last_login
+    def create(self, user_data: dict) -> dict:
+        """Create a new user"""
+        user_model = UserModel(
+            nombre_usuario=user_data['username'],
+            password=user_data['password'],
+            rol=user_data['role'],
+            nombre_completo=user_data['full_name'],
+            email=user_data['email']
         )
+        self.session.add(user_model)
+        self.session.commit()
+        return self._model_to_entity(user_model)
     
-    def _entity_to_model(self, user: User) -> UserModel:
-        """Convert domain entity to SQLAlchemy model"""
-        return UserModel(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            password_hash=user.password_hash,
-            role=user.role,
-            full_name=user.full_name,
-            is_active=user.is_active,
-            created_at=user.created_at,
-            last_login=user.last_login
-        )
+    def get_by_id(self, user_id: int) -> Optional[dict]:
+        """Get user by ID"""
+        user_model = self.session.query(UserModel).filter(UserModel.id_usuario == user_id).first()
+        return self._model_to_entity(user_model) if user_model else None
     
-    def create(self, user: User) -> User:
-        with self.db_session.get_session() as session:
-            model = self._entity_to_model(user)
-            model.id = None  # Let the database assign the ID
-            model.created_at = datetime.utcnow()
-            
-            session.add(model)
-            session.commit()
-            session.refresh(model)
-            return self._model_to_entity(model)
+    def get_by_username(self, username: str) -> Optional[dict]:
+        """Get user by username"""
+        user_model = self.session.query(UserModel).filter(UserModel.nombre_usuario == username).first()
+        return self._model_to_entity(user_model) if user_model else None
     
-    def get_by_id(self, user_id: int) -> Optional[User]:
-        with self.db_session.get_session() as session:
-            model = session.query(UserModel).filter(UserModel.id == user_id).first()
-            return self._model_to_entity(model) if model else None
-    
-    def get_by_username(self, username: str) -> Optional[User]:
-        with self.db_session.get_session() as session:
-            model = session.query(UserModel).filter(UserModel.username == username).first()
-            return self._model_to_entity(model) if model else None
-    
-    def get_by_email(self, email: str) -> Optional[User]:
-        with self.db_session.get_session() as session:
-            model = session.query(UserModel).filter(UserModel.email == email).first()
-            return self._model_to_entity(model) if model else None
-    
-    def update(self, user: User) -> User:
-        with self.db_session.get_session() as session:
-            model = session.query(UserModel).filter(UserModel.id == user.id).first()
-            if model:
-                model.username = user.username
-                model.email = user.email
-                model.password_hash = user.password_hash
-                model.role = user.role
-                model.full_name = user.full_name
-                model.is_active = user.is_active
-                model.last_login = user.last_login
-                
-                session.commit()
-                session.refresh(model)
-                return self._model_to_entity(model)
+    def update(self, user_id: int, user_data: dict) -> dict:
+        """Update user data"""
+        user_model = self.session.query(UserModel).filter(UserModel.id_usuario == user_id).first()
+        if user_model:
+            for key, value in user_data.items():
+                if hasattr(user_model, key):
+                    setattr(user_model, key, value)
+            self.session.commit()
+            return self._model_to_entity(user_model)
+        return None
     
     def delete(self, user_id: int) -> bool:
-        with self.db_session.get_session() as session:
-            model = session.query(UserModel).filter(UserModel.id == user_id).first()
-            if model:
-                session.delete(model)
-                session.commit()
-                return True
-            return False
-
-
-# Legacy function for compatibility
-def get_db():
-    """Legacy function - to be replaced with DatabaseSession"""
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
+        """Delete user"""
+        user_model = self.session.query(UserModel).filter(UserModel.id_usuario == user_id).first()
+        if user_model:
+            self.session.delete(user_model)
+            self.session.commit()
+            return True
+        return False
     
-    DATABASE_URL = "postgresql://user:password@localhost/dbname"
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    def _model_to_entity(self, model: UserModel) -> dict:
+        """Convert SQLAlchemy model to domain entity"""
+        if not model:
+            return None
+        return {
+            'id': model.id_usuario,
+            'username': model.nombre_usuario,
+            'password': model.password,
+            'role': model.rol,
+            'full_name': model.nombre_completo,
+            'email': model.email,
+            'active': model.activo,
+            'created_at': model.fecha_creacion,
+            'last_session': model.ultima_sesion
+        }
+
+class SQLVigilanteRepository(VigilanteRepository):
+    """SQLAlchemy implementation of VigilanteRepository"""
     
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    def __init__(self):
+        self.session = get_session()
+    
+    def create(self, vigilante_data: dict) -> dict:
+        """Create a new vigilante"""
+        vigilante_model = VigilanteModel(
+            nombre_completo=vigilante_data['full_name'],
+            numero_identificacion=vigilante_data['identification_number'],
+            fecha_nacimiento=vigilante_data['birth_date'],
+            telefono_celular=vigilante_data['phone'],
+            correo_electronico=vigilante_data.get('email'),
+            direccion_calle=vigilante_data['street_number'],
+            direccion_carrera=vigilante_data['avenue_number'],
+            direccion_completa=vigilante_data['full_address'],
+            contacto_emergencia_nombre=vigilante_data['emergency_contact_name'],
+            contacto_emergencia_telefono=vigilante_data['emergency_contact_phone'],
+            tipo_contrato=vigilante_data['contract_type'],
+            edificios=vigilante_data['buildings'],
+            salario=vigilante_data['salary'],
+            fecha_contratacion=vigilante_data['hire_date']
+        )
+        self.session.add(vigilante_model)
+        self.session.commit()
+        return self._model_to_entity(vigilante_model)
+    
+    def get_all(self) -> List[dict]:
+        """Get all vigilantes"""
+        vigilantes = self.session.query(VigilanteModel).filter(VigilanteModel.activo == True).all()
+        return [self._model_to_entity(v) for v in vigilantes]
+    
+    def get_by_id(self, vigilante_id: int) -> Optional[dict]:
+        """Get vigilante by ID"""
+        vigilante_model = self.session.query(VigilanteModel).filter(VigilanteModel.id_vigilante == vigilante_id).first()
+        return self._model_to_entity(vigilante_model) if vigilante_model else None
+    
+    def update(self, vigilante_id: int, vigilante_data: dict) -> dict:
+        """Update vigilante data"""
+        vigilante_model = self.session.query(VigilanteModel).filter(VigilanteModel.id_vigilante == vigilante_id).first()
+        if vigilante_model:
+            for key, value in vigilante_data.items():
+                if hasattr(vigilante_model, key):
+                    setattr(vigilante_model, key, value)
+            self.session.commit()
+            return self._model_to_entity(vigilante_model)
+        return None
+    
+    def delete(self, vigilante_id: int) -> bool:
+        """Soft delete vigilante"""
+        vigilante_model = self.session.query(VigilanteModel).filter(VigilanteModel.id_vigilante == vigilante_id).first()
+        if vigilante_model:
+            vigilante_model.activo = False
+            self.session.commit()
+            return True
+        return False
+    
+    def _model_to_entity(self, model: VigilanteModel) -> dict:
+        """Convert SQLAlchemy model to domain entity"""
+        if not model:
+            return None
+        return {
+            'id': model.id_vigilante,
+            'full_name': model.nombre_completo,
+            'identification_number': model.numero_identificacion,
+            'birth_date': model.fecha_nacimiento,
+            'phone': model.telefono_celular,
+            'email': model.correo_electronico,
+            'street_number': model.direccion_calle,
+            'avenue_number': model.direccion_carrera,
+            'full_address': model.direccion_completa,
+            'emergency_contact_name': model.contacto_emergencia_nombre,
+            'emergency_contact_phone': model.contacto_emergencia_telefono,
+            'contract_type': model.tipo_contrato,
+            'buildings': model.edificios,
+            'salary': float(model.salario),
+            'hire_date': model.fecha_contratacion,
+            'active': model.activo
+        }
+
+class SQLBuildingRepository(BuildingRepository):
+    """SQLAlchemy implementation of BuildingRepository"""
+    
+    def __init__(self):
+        self.session = get_session()
+    
+    def create(self, building_data: dict) -> dict:
+        """Create a new building"""
+        building_model = BuildingModel(
+            nombre=building_data['name'],
+            direccion_calle=building_data['street_number'],
+            direccion_carrera=building_data['avenue_number'],
+            direccion_completa=building_data['full_address'],
+            telefono=building_data.get('phone'),
+            administrador=building_data.get('administrator'),
+            telefono_administrador=building_data.get('administrator_phone'),
+            tipo_turno=building_data['shift_type'],
+            horas_semanales=building_data['weekly_hours']
+        )
+        self.session.add(building_model)
+        self.session.commit()
+        return self._model_to_entity(building_model)
+    
+    def get_all(self) -> List[dict]:
+        """Get all buildings"""
+        buildings = self.session.query(BuildingModel).filter(BuildingModel.activo == True).all()
+        return [self._model_to_entity(b) for b in buildings]
+    
+    def get_by_id(self, building_id: int) -> Optional[dict]:
+        """Get building by ID"""
+        building_model = self.session.query(BuildingModel).filter(BuildingModel.id_edificio == building_id).first()
+        return self._model_to_entity(building_model) if building_model else None
+    
+    def update(self, building_id: int, building_data: dict) -> dict:
+        """Update building data"""
+        building_model = self.session.query(BuildingModel).filter(BuildingModel.id_edificio == building_id).first()
+        if building_model:
+            for key, value in building_data.items():
+                if hasattr(building_model, key):
+                    setattr(building_model, key, value)
+            self.session.commit()
+            return self._model_to_entity(building_model)
+        return None
+    
+    def delete(self, building_id: int) -> bool:
+        """Soft delete building"""
+        building_model = self.session.query(BuildingModel).filter(BuildingModel.id_edificio == building_id).first()
+        if building_model:
+            building_model.activo = False
+            self.session.commit()
+            return True
+        return False
+    
+    def _model_to_entity(self, model: BuildingModel) -> dict:
+        """Convert SQLAlchemy model to domain entity"""
+        if not model:
+            return None
+        return {
+            'id': model.id_edificio,
+            'name': model.nombre,
+            'street_number': model.direccion_calle,
+            'avenue_number': model.direccion_carrera,
+            'full_address': model.direccion_completa,
+            'phone': model.telefono,
+            'administrator': model.administrador,
+            'administrator_phone': model.telefono_administrador,
+            'shift_type': model.tipo_turno,
+            'weekly_hours': model.horas_semanales,
+            'active': model.activo
+        }
