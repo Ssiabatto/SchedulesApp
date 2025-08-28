@@ -1,6 +1,6 @@
 from flask import Flask
 from flask_jwt_extended import JWTManager
-from app.interface.api.routes import api_bp
+from app.interface.api.routes import register_routes
 from app.interface.api.auth import auth_bp
 from app.config import Config
 
@@ -9,10 +9,12 @@ def create_app():
     app.config.from_object(Config)
 
     # Initialize JWT
-    jwt = JWTManager(app)
+    JWTManager(app)
 
-    # Register blueprints
-    app.register_blueprint(api_bp, url_prefix='/api')
+    # Register all API route blueprints with their own prefixes
+    register_routes(app)
+
+    # Auth blueprint has no prefix defined; mount under /api/auth
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
 
     return app

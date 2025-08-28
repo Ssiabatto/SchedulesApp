@@ -34,6 +34,12 @@ npm --version
 ```bash
 git clone <repository-url>
 cd SchedulesApp
+
+# Windows
+copy .env.example .env
+copy frontend\.env.example frontend\.env.local
+
+# Linux/Mac
 cp .env.example .env
 cp frontend/.env.example frontend/.env.local
 ```
@@ -75,7 +81,15 @@ pip install -r requirements.txt
 ```bash
 # Crear base de datos PostgreSQL
 createdb gestion_turnos_vigilantes
+
 # Configurar DATABASE_URL en .env
+# Windows - editar manualmente o usar:
+notepad .env
+
+# Linux/Mac
+nano .env
+# o vim .env
+
 python init_db.py
 python create_demo_user.py
 ```
@@ -84,6 +98,14 @@ python create_demo_user.py
 ```bash
 cd frontend
 npm install
+
+# Configurar variables de entorno
+# Windows
+copy .env.example .env.local
+
+# Linux/Mac  
+cp .env.example .env.local
+
 npm run build  # Verificar que el build sea exitoso
 ```
 
@@ -95,6 +117,10 @@ El script `test_integration.py` verifica los endpoints principales:
 
 ```bash
 python test_integration.py
+
+# Opcional: cambiar la URL base si el backend corre en otro host/puerto
+# Windows cmd.exe
+set API_BASE_URL=http://127.0.0.1:5000/api && python test_integration.py
 ```
 
 **Qué verifica:**
@@ -103,21 +129,17 @@ python test_integration.py
 - ✅ Login de usuario (`/api/auth/login`)
 - ✅ Endpoint protegido (`/api/auth/protected`)
 
-**Resultado esperado:**
+**Resultado esperado (resumen abreviado):**
 ```
-🚀 Starting SchedulesApp Integration Tests
-==================================================
-🔍 Testing health check...
-✅ Health check passed: API is running
-🔍 Testing user registration...
-✅ User registration passed: User registered successfully
-🔍 Testing user login...
-✅ Login passed: admin logged in
-🔍 Testing protected endpoint...
-✅ Protected endpoint passed: Access granted
-==================================================
-📊 Test Results: 4/4 tests passed
-🎉 All tests passed! The API is working correctly.
+Starting SchedulesApp Integration Tests
+--------------------------------------------------
+- Testing health check...
+- Testing user registration...
+- Testing user login...
+- Testing protected endpoint...
+--------------------------------------------------
+Test Results: 4/4 tests passed
+All tests passed! The API is working correctly.
 ```
 
 ### 2. Test de Base de Datos
@@ -400,6 +422,10 @@ docker-compose exec db psql -U user -d gestion_turnos_vigilantes -c "\dt"
 
 1. **Verificar variables de entorno:**
 ```bash
+# Windows
+type .env | findstr JWT_SECRET_KEY
+
+# Linux/Mac
 cat .env | grep JWT_SECRET_KEY
 ```
 

@@ -14,6 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Advanced reporting with charts and analytics
 - Multi-tenancy support
 
+## [1.0.1] - 2025-08-28 - Docs & Deployment Enhancements
+
+### Added
+- New DEPLOYMENT_GUIDE.md with step-by-step scenarios: all-Docker, DB-in-Docker with native services, full native, and backend as Windows .exe; includes remote DB switching.
+- Windows Quick Start section in README for fast local validation.
+
+### Changed
+- TESTING_GUIDE.md: clarified steps, added Windows cmd.exe tip to override API_BASE_URL, and synced expected output with the current integration test runner.
+- README.md: linked to the Deployment Guide and corrected minor heading/emojis; clarified default API URL for tests.
+
+### Fixed
+- test_integration.py: robust flow for health, registration (timestamped username), login, and protected endpoint; improved error messages.
+- Minor documentation typos and emoji rendering issues.
+
 ## [1.0.0] - 2025-07-09 - Production Ready Release
 
 ### Added

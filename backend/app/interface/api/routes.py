@@ -7,6 +7,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from typing import Dict, Any
 
+import os
 from ...application.services import VigilanteService, BuildingService, ShiftService, ReportService
 from ...infrastructure.database import (
     DatabaseSession, 
@@ -23,9 +24,10 @@ shifts_bp = Blueprint('shifts', __name__, url_prefix='/api/shifts')
 buildings_bp = Blueprint('buildings', __name__, url_prefix='/api/buildings')
 reports_bp = Blueprint('reports', __name__, url_prefix='/api/reports')
 
-# TODO: Initialize database session from config
-DATABASE_URL = "postgresql://user:password@db:5432/schedules_app"
-db_session = DatabaseSession(DATABASE_URL)
+# Initialize database session from environment or default
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://user:password@localhost:5432/gestion_turnos_vigilantes')
+db_session_manager = DatabaseSession(DATABASE_URL)
+db_session = db_session_manager.get_session()
 
 # Initialize repositories
 vigilante_repository = SQLVigilanteRepository(db_session)

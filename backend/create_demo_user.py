@@ -17,9 +17,9 @@ def create_demo_user():
     """Create a demo user for testing"""
     
     # Initialize database and repositories (use environment variable or default)
-    database_url = os.environ.get('DATABASE_URL', 'postgresql://user:password@localhost/dbname')
-    db_session = DatabaseSession(database_url)
-    user_repository = SQLUserRepository(db_session)
+    database_url = os.environ.get('DATABASE_URL', 'postgresql://user:password@localhost:5432/gestion_turnos_vigilantes')
+    db_session_manager = DatabaseSession(database_url)
+    user_repository = SQLUserRepository(db_session_manager.get_session())
     user_service = UserService(user_repository)
     
     # Demo user data

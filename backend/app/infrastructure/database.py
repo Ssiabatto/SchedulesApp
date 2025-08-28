@@ -244,6 +244,7 @@ class ConfiguracionSistemaModel(Base):
 # Repository Base Classes for Clean Architecture
 from abc import ABC, abstractmethod
 from typing import List, Optional
+from app.domain.models import User as DomainUser
 
 class UserRepository(ABC):
     """Abstract repository for User operations"""
@@ -316,69 +317,87 @@ class BuildingRepository(ABC):
 
 # SQLAlchemy Repository Implementations
 class SQLUserRepository(UserRepository):
-    """SQLAlchemy implementation of UserRepository"""
-    
-    def __init__(self):
-        self.session = get_session()
-    
-    def create(self, user_data: dict) -> dict:
-        """Create a new user"""
+    """SQLAlchemy implementation of UserRepository that returns DomainUser entities"""
+
+    def __init__(self, session=None):
+        self.session = session or get_session()
+
+    def _role_to_db(self, role: str) -> str:
+        mapping = {
+            'operator': 'operador_supervisor',
+            'auxiliary': 'auxiliar_administrativo',
+        }
+        return mapping.get(role, 'auxiliar_administrativo')
+
+    def _role_from_db(self, db_role: str) -> str:
+        reverse = {
+            'operador_supervisor': 'operator',
+            'auxiliar_administrativo': 'auxiliary',
+        }
+        return reverse.get(db_role, 'auxiliary')
+
+    def create(self, user: DomainUser) -> DomainUser:
+        """Create a new user from a DomainUser entity"""
         user_model = UserModel(
-            nombre_usuario=user_data['username'],
-            password=user_data['password'],
-            rol=user_data['role'],
-            nombre_completo=user_data['full_name'],
-            email=user_data['email']
+            nombre_usuario=user.username,
+            password=user.password_hash,
+            rol=self._role_to_db(user.role),
+            nombre_completo=user.full_name,
+            email=user.email,
+            activo=user.is_active,
         )
         self.session.add(user_model)
         self.session.commit()
         return self._model_to_entity(user_model)
-    
-    def get_by_id(self, user_id: int) -> Optional[dict]:
-        """Get user by ID"""
+
+    def get_by_id(self, user_id: int) -> Optional[DomainUser]:
         user_model = self.session.query(UserModel).filter(UserModel.id_usuario == user_id).first()
         return self._model_to_entity(user_model) if user_model else None
-    
-    def get_by_username(self, username: str) -> Optional[dict]:
-        """Get user by username"""
+
+    def get_by_username(self, username: str) -> Optional[DomainUser]:
         user_model = self.session.query(UserModel).filter(UserModel.nombre_usuario == username).first()
         return self._model_to_entity(user_model) if user_model else None
-    
-    def update(self, user_id: int, user_data: dict) -> dict:
-        """Update user data"""
-        user_model = self.session.query(UserModel).filter(UserModel.id_usuario == user_id).first()
-        if user_model:
-            for key, value in user_data.items():
-                if hasattr(user_model, key):
-                    setattr(user_model, key, value)
-            self.session.commit()
-            return self._model_to_entity(user_model)
-        return None
-    
+
+    def get_by_email(self, email: str) -> Optional[DomainUser]:
+        user_model = self.session.query(UserModel).filter(UserModel.email == email).first()
+        return self._model_to_entity(user_model) if user_model else None
+
+    def update(self, user: DomainUser) -> DomainUser:
+        user_model = self.session.query(UserModel).filter(UserModel.id_usuario == user.id).first()
+        if not user_model:
+            return None
+        user_model.nombre_usuario = user.username
+        user_model.password = user.password_hash
+        user_model.rol = self._role_to_db(user.role)
+        user_model.nombre_completo = user.full_name
+        user_model.email = user.email
+        user_model.activo = user.is_active
+        user_model.ultima_sesion = user.last_login
+        self.session.commit()
+        return self._model_to_entity(user_model)
+
     def delete(self, user_id: int) -> bool:
-        """Delete user"""
         user_model = self.session.query(UserModel).filter(UserModel.id_usuario == user_id).first()
         if user_model:
             self.session.delete(user_model)
             self.session.commit()
             return True
         return False
-    
-    def _model_to_entity(self, model: UserModel) -> dict:
-        """Convert SQLAlchemy model to domain entity"""
+
+    def _model_to_entity(self, model: UserModel) -> Optional[DomainUser]:
         if not model:
             return None
-        return {
-            'id': model.id_usuario,
-            'username': model.nombre_usuario,
-            'password': model.password,
-            'role': model.rol,
-            'full_name': model.nombre_completo,
-            'email': model.email,
-            'active': model.activo,
-            'created_at': model.fecha_creacion,
-            'last_session': model.ultima_sesion
-        }
+        return DomainUser(
+            id=model.id_usuario,
+            username=model.nombre_usuario,
+            email=model.email,
+            password_hash=model.password,
+            role=self._role_from_db(model.rol),
+            full_name=model.nombre_completo,
+            is_active=model.activo,
+            created_at=model.fecha_creacion,
+            last_login=model.ultima_sesion,
+        )
 
 class SQLVigilanteRepository(VigilanteRepository):
     """SQLAlchemy implementation of VigilanteRepository"""
@@ -530,4 +549,316 @@ class SQLBuildingRepository(BuildingRepository):
             'shift_type': model.tipo_turno,
             'weekly_hours': model.horas_semanales,
             'active': model.activo
+        }
+
+class DatabaseSession:
+    """Database session manager for the application"""
+    
+    def __init__(self, database_url=None):
+        if database_url:
+            self.engine = create_engine(database_url, echo=False)
+        else:
+            self.engine = create_engine_instance()
+        self.Session = sessionmaker(bind=self.engine)
+    
+    def get_session(self):
+        """Get a new database session"""
+        return self.Session()
+    
+    def create_tables(self):
+        """Create all database tables"""
+        Base.metadata.create_all(self.engine)
+
+# Repository implementations
+class SQLVigilanteRepository:
+    """SQL implementation of Vigilante repository"""
+    
+    def __init__(self, session=None):
+        self.session = session or get_session()
+    
+    def get_all(self):
+        """Get all vigilantes"""
+        try:
+            vigilantes = self.session.query(VigilanteModel).filter(VigilanteModel.activo == True).all()
+            return [self._to_dict(v) for v in vigilantes]
+        except Exception as e:
+            print(f"Error getting vigilantes: {e}")
+            return []
+    
+    def get_by_id(self, vigilante_id):
+        """Get vigilante by ID"""
+        try:
+            vigilante = self.session.query(VigilanteModel).filter(
+                VigilanteModel.id_vigilante == vigilante_id,
+                VigilanteModel.activo == True
+            ).first()
+            return self._to_dict(vigilante) if vigilante else None
+        except Exception as e:
+            print(f"Error getting vigilante {vigilante_id}: {e}")
+            return None
+    
+    def create(self, vigilante_data):
+        """Create new vigilante"""
+        try:
+            vigilante = VigilanteModel(**vigilante_data)
+            self.session.add(vigilante)
+            self.session.commit()
+            return self._to_dict(vigilante)
+        except Exception as e:
+            self.session.rollback()
+            print(f"Error creating vigilante: {e}")
+            return None
+    
+    def update(self, vigilante_id, vigilante_data):
+        """Update existing vigilante"""
+        try:
+            vigilante = self.session.query(VigilanteModel).filter(
+                VigilanteModel.id_vigilante == vigilante_id
+            ).first()
+            if vigilante:
+                for key, value in vigilante_data.items():
+                    setattr(vigilante, key, value)
+                self.session.commit()
+                return self._to_dict(vigilante)
+            return None
+        except Exception as e:
+            self.session.rollback()
+            print(f"Error updating vigilante {vigilante_id}: {e}")
+            return None
+    
+    def delete(self, vigilante_id):
+        """Soft delete vigilante"""
+        try:
+            vigilante = self.session.query(VigilanteModel).filter(
+                VigilanteModel.id_vigilante == vigilante_id
+            ).first()
+            if vigilante:
+                vigilante.activo = False
+                self.session.commit()
+                return True
+            return False
+        except Exception as e:
+            self.session.rollback()
+            print(f"Error deleting vigilante {vigilante_id}: {e}")
+            return False
+    
+    def _to_dict(self, model):
+        """Convert model to dictionary"""
+        if not model:
+            return None
+        return {
+            'id': model.id_vigilante,
+            'name': model.nombre_completo,
+            'email': model.correo_electronico,
+            'phone': model.telefono_celular,
+            'address': model.direccion_completa,
+            'contract_start': model.fecha_contratacion.isoformat() if model.fecha_contratacion else None,
+            'hourly_rate': float(model.salario) if model.salario else 0,
+            'active': model.activo
+        }
+
+
+class SQLBuildingRepository:
+    """SQL implementation of Building repository"""
+    
+    def __init__(self, session=None):
+        self.session = session or get_session()
+    
+    def get_all(self):
+        """Get all buildings"""
+        try:
+            buildings = self.session.query(BuildingModel).filter(BuildingModel.activo == True).all()
+            return [self._to_dict(b) for b in buildings]
+        except Exception as e:
+            print(f"Error getting buildings: {e}")
+            return []
+    
+    def get_by_id(self, building_id):
+        """Get building by ID"""
+        try:
+            building = self.session.query(BuildingModel).filter(
+                BuildingModel.id_edificio == building_id,
+                BuildingModel.activo == True
+            ).first()
+            return self._to_dict(building) if building else None
+        except Exception as e:
+            print(f"Error getting building {building_id}: {e}")
+            return None
+    
+    def create(self, building_data):
+        """Create new building"""
+        try:
+            building = BuildingModel(**building_data)
+            self.session.add(building)
+            self.session.commit()
+            return self._to_dict(building)
+        except Exception as e:
+            self.session.rollback()
+            print(f"Error creating building: {e}")
+            return None
+    
+    def update(self, building_id, building_data):
+        """Update existing building"""
+        try:
+            building = self.session.query(BuildingModel).filter(
+                BuildingModel.id_edificio == building_id
+            ).first()
+            if building:
+                for key, value in building_data.items():
+                    setattr(building, key, value)
+                self.session.commit()
+                return self._to_dict(building)
+            return None
+        except Exception as e:
+            self.session.rollback()
+            print(f"Error updating building {building_id}: {e}")
+            return None
+    
+    def delete(self, building_id):
+        """Soft delete building"""
+        try:
+            building = self.session.query(BuildingModel).filter(
+                BuildingModel.id_edificio == building_id
+            ).first()
+            if building:
+                building.activo = False
+                self.session.commit()
+                return True
+            return False
+        except Exception as e:
+            self.session.rollback()
+            print(f"Error deleting building {building_id}: {e}")
+            return False
+    
+    def _to_dict(self, model):
+        """Convert model to dictionary"""
+        if not model:
+            return None
+        return {
+            'id': model.id_edificio,
+            'name': model.nombre,
+            'street_number': model.direccion_calle,
+            'avenue_number': model.direccion_carrera,
+            'full_address': model.direccion_completa,
+            'phone': model.telefono,
+            'administrator': model.administrador,
+            'administrator_phone': model.telefono_administrador,
+            'shift_type': model.tipo_turno,
+            'weekly_hours': model.horas_semanales,
+            'active': model.activo
+        }
+
+
+class SQLShiftRepository:
+    """SQL implementation of Shift repository"""
+    
+    def __init__(self, session=None):
+        self.session = session or get_session()
+    
+    def get_all(self):
+        """Get all shifts"""
+        try:
+            shifts = self.session.query(ShiftModel).all()
+            return [self._to_dict(s) for s in shifts]
+        except Exception as e:
+            print(f"Error getting shifts: {e}")
+            return []
+    
+    def get_by_id(self, shift_id):
+        """Get shift by ID"""
+        try:
+            shift = self.session.query(ShiftModel).filter(
+                ShiftModel.id_asignacion == shift_id
+            ).first()
+            return self._to_dict(shift) if shift else None
+        except Exception as e:
+            print(f"Error getting shift {shift_id}: {e}")
+            return None
+    
+    def create(self, shift_data):
+        """Create new shift"""
+        try:
+            shift = ShiftModel(**shift_data)
+            self.session.add(shift)
+            self.session.commit()
+            return self._to_dict(shift)
+        except Exception as e:
+            self.session.rollback()
+            print(f"Error creating shift: {e}")
+            return None
+    
+    def _to_dict(self, model):
+        """Convert model to dictionary"""
+        if not model:
+            return None
+        return {
+            'id': model.id_asignacion,
+            'vigilante_id': model.id_vigilante,
+            'building_id': model.id_edificio,
+            'shift_type_id': model.id_tipo_turno,
+            'start_date': model.fecha_inicio.isoformat() if model.fecha_inicio else None,
+            'end_date': model.fecha_fin.isoformat() if model.fecha_fin else None,
+            'start_time': model.hora_inicio.isoformat() if model.hora_inicio else None,
+            'end_time': model.hora_fin.isoformat() if model.hora_fin else None,
+            'status': model.estado,
+            'active': model.activo
+        }
+
+
+class SQLReportRepository:
+    """SQL implementation of Report repository"""
+    
+    def __init__(self, session=None):
+        self.session = session or get_session()
+    
+    def get_vigilante_hours(self, vigilante_id, start_date, end_date):
+        """Get vigilante hours for a period"""
+        try:
+            hours = self.session.query(RegistroHorasModel).filter(
+                RegistroHorasModel.id_vigilante == vigilante_id,
+                RegistroHorasModel.fecha >= start_date,
+                RegistroHorasModel.fecha <= end_date
+            ).all()
+            return [self._hours_to_dict(h) for h in hours]
+        except Exception as e:
+            print(f"Error getting hours for vigilante {vigilante_id}: {e}")
+            return []
+    
+    def get_building_report(self, building_id, start_date, end_date):
+        """Get building report for a period"""
+        try:
+            shifts = self.session.query(ShiftModel).filter(
+                ShiftModel.id_edificio == building_id,
+                ShiftModel.fecha_inicio >= start_date,
+                ShiftModel.fecha_fin <= end_date
+            ).all()
+            return [self._shift_to_dict(s) for s in shifts]
+        except Exception as e:
+            print(f"Error getting building report {building_id}: {e}")
+            return []
+    
+    def _hours_to_dict(self, model):
+        """Convert hours model to dictionary"""
+        if not model:
+            return None
+        return {
+            'date': model.fecha.isoformat() if model.fecha else None,
+            'vigilante_id': model.id_vigilante,
+            'building_id': model.id_edificio,
+            'normal_hours': float(model.horas_normales) if model.horas_normales else 0,
+            'overtime_hours': float(model.horas_extras) if model.horas_extras else 0,
+            'holiday_hours': float(model.horas_festivos) if model.horas_festivos else 0
+        }
+    
+    def _shift_to_dict(self, model):
+        """Convert shift model to dictionary"""
+        if not model:
+            return None
+        return {
+            'id': model.id_asignacion,
+            'vigilante_id': model.id_vigilante,
+            'building_id': model.id_edificio,
+            'start_date': model.fecha_inicio.isoformat() if model.fecha_inicio else None,
+            'end_date': model.fecha_fin.isoformat() if model.fecha_fin else None,
+            'status': model.estado
         }

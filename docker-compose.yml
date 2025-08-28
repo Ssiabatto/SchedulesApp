@@ -3,8 +3,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    volumes:
-      - ./backend:/app
+    # Temporarily disable volume mounting for debugging
+    # volumes:
+    #   - ./backend:/app
     ports:
       - "5000:5000"
     environment:
@@ -22,9 +23,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+    # Temporarily disable volume mounting to use built files
+    # volumes:
+    #   - ./frontend:/app
+    #   - /app/node_modules
     ports:
       - "3000:3000"
     environment:

@@ -8,7 +8,8 @@ from app.infrastructure.database import DatabaseSession, SQLUserRepository
 auth_bp = Blueprint('auth', __name__)
 
 # Initialize database and repositories
-db_session = DatabaseSession(os.environ.get('DATABASE_URL', 'postgresql://user:password@localhost:5432/gestion_turnos_vigilantes'))
+db_session_manager = DatabaseSession(os.environ.get('DATABASE_URL', 'postgresql://user:password@localhost:5432/gestion_turnos_vigilantes'))
+db_session = db_session_manager.get_session()
 user_repository = SQLUserRepository(db_session)
 user_service = UserService(user_repository)
 
